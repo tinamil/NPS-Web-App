@@ -58,7 +58,7 @@ namespace NPS_Web_App {
             for (int i = 0; i < macs.Length; ++i) {
                 macs[i] = Server.HtmlDecode(macs[i].Trim());
             }
-            if(macs.Length > 0) {
+            if (macs.Length > 0) {
                 Response.AppendToLog($"{Request.LogonUserIdentity.Name} NPS Editor added MAC addresses {String.Join(",", macs)} to policy {policy}");
                 ExecuteCode("Add-NPSPolicyMACAddress -MACAddress $arg0 -PolicyName $arg1", true, macs, policy);
                 ChangePolicy(PolicyList, null);
@@ -111,9 +111,6 @@ namespace NPS_Web_App {
             }
             blockText.AppendLine(NPSFunctions);
             blockText.AppendLine(command);
-            if (servers.Count > 1 && sync) {
-                blockText.AppendLine($"Sync-NPSServers {String.Join(" ", servers)}");
-            }
             var block = ScriptBlock.Create(blockText.ToString());
             shell.AddCommand("Invoke-Command");
             shell.AddParameter("ComputerName", servers[0]);
@@ -132,6 +129,20 @@ namespace NPS_Web_App {
                     resultOutput.Add(psObject.BaseObject.ToString());
                 }
             }
+
+            if (servers.Count > 1 && sync) {
+                shell = PowerShell.Create();
+                shell.AddScript($"{NPSFunctions}\nSync-NPSServers {servers[0]} {String.Join(",", servers.Skip(1))}");
+                results = shell.Invoke();
+                if (results.Count > 0) {
+                    var output = new List<string>();
+                    foreach (var psObject in results) {
+                        output.Add(psObject.BaseObject.ToString());
+                    }
+                    throw new Exception(string.Join(", ", output));
+                }
+            }
+
             return resultOutput;
         }
 
@@ -361,7 +372,11 @@ function Remove-NPSPolicyMACAddress {
             {
                 $MACAddressString.Append(""|^"" + $ExistingMACs[$i] + ""$"") | Out-Null
             }
-        }          
+        }
+
+        if($ExistingMACs.Count -eq 0){
+            $MACAddressString.Append(""^$"") | Out-Null
+        }
 
         $MACList.'#text' = $MACAddressString.ToString() + $matchString +'"")'    
         $MACList.OwnerDocument.OuterXml | Out-File $filePath
@@ -486,7 +501,10 @@ function Sync-NPSServers {
         {
             $source = '\\' + $sourceServer + '\c$\config.xml'
             $dest = '\\' + $server + '\c$'
-            Copy-Item $source $dest
+            Copy-Item $source $dest -ErrorAction stop -ErrorVariable ProcessError
+            if($ProcessError){
+                throw ""Failed to copy file from $source to $dest due to $ProcessError""
+            }
             if(Test-Path $($dest+'\config.xml'))
             {
                 Invoke-Command -ComputerName $server -ScriptBlock {
@@ -496,7 +514,7 @@ function Sync-NPSServers {
             }
             else
             {
-                Write-Error ""Unable to copy file to destination server. Sync failed.""
+                throw ""Unable to copy file to destination server. Sync failed.""
             }
         }
     }
