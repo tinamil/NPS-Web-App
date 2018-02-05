@@ -6,6 +6,9 @@ using System.Text;
 using System.Web.UI.WebControls;
 using System.Web.Configuration;
 using System.Configuration;
+using System.Web;
+using System.Security.Principal;
+using System.Text.RegularExpressions;
 
 namespace NPS_Web_App {
     public partial class _default : System.Web.UI.Page {
@@ -39,6 +42,9 @@ namespace NPS_Web_App {
 
         protected void DeleteMAC(object sender, EventArgs e) {
             var policy = Server.HtmlDecode(PolicyList.SelectedValue);
+            if (!GetPolicies().Contains(policy)) {
+                throw new Exception($"{HttpContext.Current.User.Identity.Name} does not have permissions for {policy}.");
+            }
             List<string> values = new List<string>();
             foreach (int i in MACBox.GetSelectedIndices()) {
                 values.Add(Server.HtmlDecode(MACBox.Items[i].Value));
@@ -54,6 +60,9 @@ namespace NPS_Web_App {
 
         protected void AddMAC(object sender, EventArgs e) {
             var policy = Server.HtmlDecode(PolicyList.SelectedValue);
+            if (!GetPolicies().Contains(policy)) {
+                throw new Exception($"{HttpContext.Current.User.Identity.Name} does not have permissions for {policy}.");
+            }
             var macs = MACInput.Text.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
             for (int i = 0; i < macs.Length; ++i) {
                 macs[i] = Server.HtmlDecode(macs[i].Trim());
@@ -66,33 +75,80 @@ namespace NPS_Web_App {
             }
         }
 
-        protected List<String> GetMACAddresses(string policyName) {
-            var macs = ExecuteCode($"Get-NPSPolicyMACAddress -PolicyName $arg0", false, policyName);
+        protected List<String> GetMACAddresses(string policy) {
+            if (!GetPolicies().Contains(policy)) {
+                throw new Exception($"{HttpContext.Current.User.Identity.Name} does not have permissions for {policy}.");
+            }
+            var macs = ExecuteCode($"Get-NPSPolicyMACAddress -PolicyName $arg0", false, policy);
             if (macs.Count == 0) {
                 macs.Add("NO MAC ADDRESSES FOUND");
             }
             return macs;
         }
 
+        private List<string> GetUserGroups() {
+            var groups = new List<string>();
+
+            foreach (IdentityReference group in HttpContext.Current.Request.LogonUserIdentity.Groups) {
+                groups.Add(group.Translate(typeof(NTAccount)).ToString());
+            }
+
+            return groups;
+        }
+
         protected List<string> GetPolicies() {
+            //Get all of the policies
             var policies = ExecuteCode("Get-NPSPolicies", false);
+
+            //Get user's groups
+            var groups = GetUserGroups();
+
+            //Check each group to see if it has permissions associated
+            var fullPermissionList = new List<string>();
+            foreach (var group in groups) {
+                foreach(var key in ConfigurationManager.AppSettings.AllKeys) {
+                    if(string.Equals(key, group, StringComparison.InvariantCultureIgnoreCase)) {
+                        var permissions = ConfigurationManager.AppSettings[key];
+                        var permissionList = SplitString(permissions);
+                        fullPermissionList.AddRange(permissionList);
+                    }
+                }
+            }
+            
+            //Build a new list of policies that match the permissions
+            var newPolicies = new List<string>();
+            foreach (var groupPolicyRegexString in fullPermissionList) {
+                Regex r = new Regex("^" + groupPolicyRegexString + "$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                foreach (var policy in policies) {
+                    if (r.IsMatch(policy)) {
+                        newPolicies.Add(policy);
+                    }
+                }
+            }
+            policies = newPolicies;
             if (policies.Count == 0) {
-                policies.Add("NO POLICY FOUND");
+                throw new Exception($"User {HttpContext.Current.User.Identity.Name} does not have permissions to view any policies.");
             }
             return policies;
+        }
+
+        private List<string> SplitString(string s) {
+            var returnList = new List<string>();
+            if (s != null && s.Length > 0) {
+                if (s.Contains(",")) {
+                    returnList.AddRange(s.Split(',').Select(x => x.Trim()));
+                } else {
+                    returnList.Add(s.Trim());
+                }
+            }
+            return returnList;
         }
 
         protected List<string> ExecuteCode(string command, bool sync, params object[] args) {
             //Get the list of NPS Backend servers
             var serverString = ConfigurationManager.AppSettings["nps_servers"];
-            var servers = new List<string>();
-            if (serverString != null && serverString.Length > 0) {
-                if (serverString.Contains(",")) {
-                    servers.AddRange(serverString.Split(',').Select(x => x.Trim()));
-                } else {
-                    servers.Add(serverString.Trim());
-                }
-            } else {
+            var servers = SplitString(serverString);
+            if (servers.Count == 0) {
                 throw new Exception("Failed to find any NPS Servers.  Is the nps_servers configuration property set?");
             }
 
