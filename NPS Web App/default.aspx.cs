@@ -3,166 +3,215 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Management.Automation;
 using System.Text;
-using System.Web.UI.WebControls;
-using System.Web.Configuration;
+using System.Web.Script.Serialization;
 using System.Configuration;
 using System.Web;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
+using System.Collections;
 
-namespace NPS_Web_App {
-    public partial class _default : System.Web.UI.Page {
+namespace NPS_Web_App
+{
 
-        protected override void OnLoad(EventArgs e) {
+    public partial class _default : System.Web.UI.Page
+    {
+
+        List<string> Policies;
+
+        public string GetJSONPolicyMacs {
+            get {
+                Dictionary<string, ArrayList> dict = new Dictionary<string, ArrayList>();
+                foreach (var pair in ExecuteCode<Hashtable>("Get-DictionaryPolicies -PolicyNames $arg0", false, (object)Policies.ToArray()))
+                {
+                    foreach (var p in pair)
+                    {
+                        var entry = (DictionaryEntry)p;
+                        if (entry.Value is PSObject)
+                            dict.Add((string)entry.Key, (((PSObject)entry.Value).BaseObject as ArrayList));
+                        else if (entry.Value is string)
+                        {
+                            dict.Add((string)entry.Key, new ArrayList() { (string)entry.Value });
+                        }
+                        else if (entry.Value is null)
+                        {
+                            dict.Add((string)entry.Key, new ArrayList());
+                        }
+                    }
+                }
+                return new JavaScriptSerializer().Serialize(dict);
+            }
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
             base.OnLoad(e);
-            if (!IsPostBack) {
+            Policies = GetPolicies();
+            if (!IsPostBack)
+            {
                 Response.AppendToLog($"{Request.LogonUserIdentity.Name} logged into NPS Editor from {Request.UserHostAddress}");
-                GetPolicies(PolicyList, null);
-                ChangePolicy(PolicyList, null);
+                //GetPolicies(PolicyList, null);
+                //ChangePolicy(PolicyList, null);
             }
         }
 
-        protected void GetPolicies(object sender, EventArgs e) {
-            if (sender is DropDownList list) {
-                list.Items.Clear();
-                foreach (string policy in GetPolicies()) {
-                    list.Items.Add(Server.HtmlEncode(policy));
-                }
-            }
-        }
-
-        protected void ChangePolicy(object sender, EventArgs e) {
-            if (sender is DropDownList list) {
-                MACBox.Items.Clear();
-                foreach (string macAddress in GetMACAddresses(Server.HtmlDecode(list.SelectedValue))) {
-                    MACBox.Items.Add(new ListItem(Server.HtmlEncode(macAddress), Server.HtmlEncode(macAddress.Replace("-", "").ToLower())));
-                }
-            }
-        }
-
-        protected void DeleteMAC(object sender, EventArgs e) {
-            var policy = Server.HtmlDecode(PolicyList.SelectedValue);
-            if (!GetPolicies().Contains(policy)) {
+        protected void DeleteMAC(object sender, EventArgs e)
+        {
+            var policy = Server.HtmlDecode(Request.Form["PolicyList"]);
+            if (!Policies.Contains(policy))
+            {
                 throw new Exception($"{HttpContext.Current.User.Identity.Name} does not have permissions for {policy}.");
             }
             List<string> values = new List<string>();
-            foreach (int i in MACBox.GetSelectedIndices()) {
-                values.Add(Server.HtmlDecode(MACBox.Items[i].Value));
+            foreach (string val in Request.Form.GetValues("MACBox"))
+            {
+                values.Add(Server.HtmlDecode(val));
             }
-            if (values.Count == 0) {
-                MACBox.CssClass += " is-invalid";
-            } else {
+            if (values.Count > 0)
+            {
                 Response.AppendToLog($"{Request.LogonUserIdentity.Name} NPS Editor deleted MAC addresses {String.Join(",", values)} from policy {policy}");
-                ExecuteCode("Remove-NPSPolicyMACAddress -MACAddress $arg0 -PolicyName $arg1", true, values.ToArray(), policy);
+                ExecuteCode<string>("Remove-NPSPolicyMACAddress -MACAddress $arg0 -PolicyName $arg1", true, values.ToArray(), policy);
             }
-            ChangePolicy(PolicyList, null);
         }
 
-        protected void AddMAC(object sender, EventArgs e) {
-            var policy = Server.HtmlDecode(PolicyList.SelectedValue);
-            if (!GetPolicies().Contains(policy)) {
+        protected void AddMAC(object sender, EventArgs e)
+        {
+            var policy = Server.HtmlDecode(Request.Form["PolicyList"]);
+            if (!Policies.Contains(policy))
+            {
                 throw new Exception($"{HttpContext.Current.User.Identity.Name} does not have permissions for {policy}.");
             }
             var macs = MACInput.Text.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            for (int i = 0; i < macs.Length; ++i) {
+            for (int i = 0; i < macs.Length; ++i)
+            {
                 macs[i] = Server.HtmlDecode(macs[i].Trim());
             }
-            if (macs.Length > 0) {
+            if (macs.Length > 0)
+            {
                 Response.AppendToLog($"{Request.LogonUserIdentity.Name} NPS Editor added MAC addresses {String.Join(",", macs)} to policy {policy}");
-                ExecuteCode("Add-NPSPolicyMACAddress -MACAddress $arg0 -PolicyName $arg1", true, macs, policy);
-                ChangePolicy(PolicyList, null);
+                ExecuteCode<string>("Add-NPSPolicyMACAddress -MACAddress $arg0 -PolicyName $arg1", true, macs, policy);
                 MACInput.Text = "";
             }
         }
 
-        protected List<String> GetMACAddresses(string policy) {
-            if (!GetPolicies().Contains(policy)) {
+        protected List<string> GetMACAddresses(string policy)
+        {
+            if (!Policies.Contains(policy))
+            {
                 throw new Exception($"{HttpContext.Current.User.Identity.Name} does not have permissions for {policy}.");
             }
-            var macs = ExecuteCode($"Get-NPSPolicyMACAddress -PolicyName $arg0", false, policy);
-            if (macs.Count == 0) {
+            var macs = ExecuteCode<string>($"Get-NPSPolicyMACAddress -PolicyName $arg0", false, policy);
+            if (macs.Count == 0)
+            {
                 macs.Add("NO MAC ADDRESSES FOUND");
             }
+            macs.Sort(delegate (string x, string y)
+            {
+                x.Replace("-", "");
+                x.Replace(".", "");
+                y.Replace("-", "");
+                y.Replace(".", "");
+                return x.CompareTo(y);
+            });
             return macs;
         }
 
-        private List<string> GetUserGroups() {
+        private List<string> GetUserGroups()
+        {
             var groups = new List<string>();
 
-            foreach (IdentityReference group in HttpContext.Current.Request.LogonUserIdentity.Groups) {
+            foreach (IdentityReference group in HttpContext.Current.Request.LogonUserIdentity.Groups)
+            {
                 groups.Add(group.Translate(typeof(NTAccount)).ToString());
             }
 
             return groups;
         }
 
-        protected List<string> GetPolicies() {
+        protected List<string> GetPolicies()
+        {
             //Get all of the policies
-            var policies = ExecuteCode("Get-NPSPolicies", false);
+            var policies = ExecuteCode<string>("Get-NPSPolicies", false);
 
             //Get user's groups
             var groups = GetUserGroups();
 
             //Check each group to see if it has permissions associated
             var fullPermissionList = new List<string>();
-            foreach (var group in groups) {
-                foreach(var key in ConfigurationManager.AppSettings.AllKeys) {
-                    if(string.Equals(key, group, StringComparison.InvariantCultureIgnoreCase)) {
+            foreach (var group in groups)
+            {
+                foreach (var key in ConfigurationManager.AppSettings.AllKeys)
+                {
+                    if (string.Equals(key, group, StringComparison.InvariantCultureIgnoreCase))
+                    {
                         var permissions = ConfigurationManager.AppSettings[key];
                         var permissionList = SplitString(permissions);
                         fullPermissionList.AddRange(permissionList);
                     }
                 }
             }
-            
+
             //Build a new list of policies that match the permissions
             var newPolicies = new List<string>();
-            foreach (var groupPolicyRegexString in fullPermissionList) {
+            foreach (var groupPolicyRegexString in fullPermissionList)
+            {
                 Regex r = new Regex("^" + groupPolicyRegexString + "$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-                foreach (var policy in policies) {
-                    if (r.IsMatch(policy)) {
+                foreach (var policy in policies)
+                {
+                    if (r.IsMatch(policy))
+                    {
                         newPolicies.Add(policy);
                     }
                 }
             }
             policies = newPolicies;
-            if (policies.Count == 0) {
+            if (policies.Count == 0)
+            {
                 throw new Exception($"User {HttpContext.Current.User.Identity.Name} does not have permissions to view any policies.");
             }
             return policies;
         }
 
-        private List<string> SplitString(string s) {
+        private List<string> SplitString(string s)
+        {
             var returnList = new List<string>();
-            if (s != null && s.Length > 0) {
-                if (s.Contains(",")) {
+            if (s != null && s.Length > 0)
+            {
+                if (s.Contains(","))
+                {
                     returnList.AddRange(s.Split(',').Select(x => x.Trim()));
-                } else {
+                }
+                else
+                {
                     returnList.Add(s.Trim());
                 }
             }
             return returnList;
         }
 
-        protected List<string> ExecuteCode(string command, bool sync, params object[] args) {
+        protected List<T> ExecuteCode<T>(string command, bool sync, params object[] args) where T : class
+        {
             //Get the list of NPS Backend servers
             var serverString = ConfigurationManager.AppSettings["nps_servers"];
             var servers = SplitString(serverString);
-            if (servers.Count == 0) {
+            if (servers.Count == 0)
+            {
                 throw new Exception("Failed to find any NPS Servers.  Is the nps_servers configuration property set?");
             }
 
             // Initialize PowerShell engine
             var shell = PowerShell.Create();
             var blockText = new StringBuilder();
-            if (args.Length > 0) {
+            if (args.Length > 0)
+            {
                 blockText.AppendLine("param(");
             }
-            for (int i = 0; i < args.Length; ++i) {
+            for (int i = 0; i < args.Length; ++i)
+            {
                 blockText.Append($"$arg{i}");
                 if (i < args.Length - 1) blockText.Append(",");
             }
-            if (args.Length > 0) {
+            if (args.Length > 0)
+            {
                 blockText.AppendLine(")");
             }
             blockText.AppendLine(NPSFunctions);
@@ -171,28 +220,36 @@ namespace NPS_Web_App {
             shell.AddCommand("Invoke-Command");
             shell.AddParameter("ComputerName", servers[0]);
             shell.AddParameter("ScriptBlock", block);
-            if (args.Length > 0) {
+            if (args.Length > 0)
+            {
                 shell.AddParameter("ArgumentList", args);
             }
 
             // Execute the script
             var results = shell.Invoke();
 
-            //Collect the results
-            var resultOutput = new List<string>();
-            if (results.Count > 0) {
-                foreach (var psObject in results) {
-                    resultOutput.Add(psObject.BaseObject.ToString());
-                }
+            foreach (var error in shell.Streams.Error)
+            {
+                throw error.Exception;
             }
 
-            if (servers.Count > 1 && sync) {
+            //Collect the results
+            var resultOutput = new List<T>();
+            foreach (var psObject in results)
+            {
+                resultOutput.Add(psObject.BaseObject as T);
+            }
+
+            if (servers.Count > 1 && sync)
+            {
                 shell = PowerShell.Create();
                 shell.AddScript($"{NPSFunctions}\nSync-NPSServers {servers[0]} {String.Join(",", servers.Skip(1))}");
                 results = shell.Invoke();
-                if (results.Count > 0) {
+                if (results.Count > 0)
+                {
                     var output = new List<string>();
-                    foreach (var psObject in results) {
+                    foreach (var psObject in results)
+                    {
                         output.Add(psObject.BaseObject.ToString());
                     }
                     throw new Exception(string.Join(", ", output));
@@ -518,6 +575,39 @@ function Get-NPSPolicyMACAddress {
         $MACs = ([string]$MACList.'#text').Replace('MATCH(""Calling-Station-Id=',"""").Replace('"")',"""").Replace(""^"","""").Replace(""$"","""").Split(""|"")
         $macs = Format-MACAddress $macs
         return $MACs
+    }
+
+    end {
+        if(Test-Path $filePath) {
+            Remove-Item $filePath
+        }
+    }
+}
+
+function Get-DictionaryPolicies {
+    param (
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelinebyPropertyName=$true)]
+        [string[]]$PolicyNames
+    )
+
+    begin {
+        $filePath = [System.IO.Path]::GetTempPath() + [Guid]::NewGuid().ToString() + "".xml""
+    }
+
+    process {
+        Export-NpsConfiguration -Path $filePath
+        [xml]$x = Get-Content -Path $filePath -Raw
+
+        $macHash = @{}
+        foreach($policy in $PolicyNames)
+        {
+            $MACList = Get-NPSPolicyMACNode $x $policy
+
+            $MACs = ([string]$MACList.'#text').Replace('MATCH(""Calling-Station-Id=',"""").Replace('"")',"""").Replace(""^"","""").Replace(""$"","""").Split(""|"")
+            $MACs = Format-MACAddress $MACs
+            $macHash.Add($policy, $MACs)
+        }
+        return $macHash
     }
 
     end {

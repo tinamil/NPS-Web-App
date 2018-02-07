@@ -46,22 +46,23 @@
                     <div class="card">
                         <div class="card-body">
                             <div class="form-group">
+                                <div class="form-row">
+                                    <input id="SearchBox" name="SearchBox" class="form-control" placeholder="Search..." />
+                                </div>
+                            </div>
+                            <div class="form-group">
                                 <label for="PolicyList">NPS Policy</label>
-                                <asp:DropDownList ID="PolicyList" runat="server" AutoPostBack="true" OnSelectedIndexChanged="ChangePolicy" CssClass="form-control" />
+                                <select id="PolicyList" name="PolicyList" class="form-control"></select>
                             </div>
 
                             <div class="form-group">
                                 <div class="form-row">
-                                    <label for="SearchBox">MAC Addresses</label>
-                                </div>
-                                <div class="form-row pb-1">
-                                    <asp:TextBox ID="SearchBox" runat="server" SelectionMode="Multiple" CssClass="form-control" placeholder="Search..." />
+                                    <label for="MACBox">MAC Addresses</label>
                                 </div>
                                 <div class="form-row">
-                                    <asp:ListBox ID="MACBox" runat="server" SelectionMode="Multiple" CssClass="form-control" Rows="10" />
+                                    <select id="MACBox" name="MACBox" class="form-control" size="10" multiple></select>
                                 </div>
                             </div>
-
                             <div class="form-group form-row">
                                 <div class="col">
                                     <button type="button" class="btn btn-warning form-control" data-toggle="modal" data-target="#deleteModal">Delete selected MACs</button>
@@ -70,7 +71,6 @@
                                     <button type="button" class="btn btn-primary form-control" data-toggle="modal" data-target="#addModal">Add New MACs</button>
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 </div>
@@ -191,6 +191,8 @@
     </div>
     <script src="jquery-3.2.1.slim.min.js"></script>
     <script src="bootstrap.bundle.min.js"></script>
+
+    <script>var mac_data = <%= GetJSONPolicyMacs %>;</script>
     <script src="script.js"></script>
 </body>
 </html>

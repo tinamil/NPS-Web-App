@@ -1,5 +1,4 @@
-﻿var macList = [];
-
+﻿
 $.fn.extend({
     disable: function (state) {
         return this.each(function () {
@@ -18,10 +17,19 @@ $.fn.multiline = function (text) {
     return this;
 }
 
+class MACField {
+    constructor(text, value) {
+        this.text = text;
+        this.value = value;
+    }
+}
+
 function ValidateAdd() {
     let valid = false;
     let macs = $('#MACInput').val().split(/\n/);
-    let underLimit = macs.length + macList.length <= 4000;
+    let policy = $('#PolicyList :selected').text()
+    let underLimit = macs.length + full_mac_list[policy].length <= 4000;
+
     if (!underLimit) {
         $('#MACLimit').show();
         valid = false;
@@ -37,7 +45,7 @@ function ValidateAdd() {
             else if (e.match(/^[a-fA-F0-9]{2}:[a-fA-F0-9]{2}:[a-fA-F0-9]{2}:[a-fA-F0-9]{2}:[a-fA-F0-9]{2}:[a-fA-F0-9]{2}$/)) { valid = true; }
             else if (e.match(/^[a-fA-F0-9]{4}\.[a-fA-F0-9]{2}\.\*$/)) { valid = true; }
             else if (e.match(/^[a-fA-F0-9]{4}\.[a-fA-F0-9]{4}\.[a-fA-F0-9]{4}$/)) { valid = true; }
-            else if (e.match(/^\s*$/)) {; }
+            else if (e.match(/^\s*$/)) { ; }
             else {
                 valid = false;
             }
@@ -53,20 +61,82 @@ function ValidateAdd() {
 }
 
 function FilterItems(query, items) {
-    let queryfiltered = query.toLowerCase().replace(/\-/g, '');
+    let queryfiltered = query.toLowerCase();
     return items.filter(function (el) {
         return el.value.match(queryfiltered);
     })
 }
 
+function buildOptions(data) {
+    let html = new Array();
+    for (let i = 0, len = data.length; i < len; ++i) {
+        html.push("<option value=\"");
+        html.push(data[i].value);
+        html.push("\">");
+        html.push(data[i].text);
+        html.push("</option>");
+    }
+    $('#MACBox').html(html.join(''));
+}
+
+function searchFunction() {
+    let macbox = $('#MACBox');
+    macbox.empty();
+    let searchString = $.trim($(this).val().replace(/\-/g, ''));
+    let policies = []
+    for (let p of Object.keys(full_mac_list)) {
+        let macs = FilterItems(searchString, full_mac_list[p]);
+        if (searchString.length == 0 || macs.length > 0) {
+            policies.push(p);
+        }
+    }
+
+    let policy = $('#PolicyList :selected').text()
+    BuildPoliciesList(policies.sort(), policy);
+    policy = $('#PolicyList :selected').text()
+    if (policies.length > 0) {
+        if (searchString.length > 0) {
+            buildOptions(FilterItems(searchString, full_mac_list[policy]));
+        } else {
+            buildOptions(full_mac_list[policy]);
+        }
+    } else {
+        buildOptions([]);
+    }
+}
+
+function ChangePolicy() {
+    $('#SearchBox').trigger('input');
+}
+
+function BuildPoliciesList(policyArray, policy) {
+    let policies = new Array();
+    for (let key of policyArray) {
+        policies.push("<option>");
+        policies.push(key);
+        policies.push("</option>");
+    }
+    $('#PolicyList').html(policies.join(''));
+    if ($.inArray(policy, policyArray) > -1) {
+        $('#PolicyList').val(policy).prop('selected', true);
+    }
+}
+
 $(document).ready(function () {
-    
+
     $('#MACFormat').hide();
     $('#MACLimit').hide();
 
-    $('#MACBox > option').each(function () {
-        macList.push(this);
-    });
+    full_mac_list = {};
+    for (let key of Object.keys(mac_data).sort()) {
+        full_mac_list[key] = [];
+        for (let mac of mac_data[key].sort()) {
+            full_mac_list[key].push(new MACField(mac, mac.replace(/\-/g, '').toLowerCase()));
+        }
+    }
+
+    BuildPoliciesList(Object.keys(mac_data).sort());
+    $('#PolicyList').on('change', ChangePolicy);
 
     $('#deleteModal').on('show.bs.modal', function (e) {
         let text = "";
@@ -91,28 +161,9 @@ $(document).ready(function () {
     $('#MACInput').keyup(function () {
         $('#ConfirmAddButton').disable(!ValidateAdd());
     });
-    function buildOptions(data) {
-        let html = new Array();
-        for (let i = 0, len = data.length; i < len; ++i) {
-            html.push("<option value=\"");
-            html.push(data[i].value);
-            html.push("\">");
-            html.push(data[i].text);
-            html.push("</option>");
-        }
-        $('#MACBox').html(html.join(''));
-    }
-    $('#SearchBox').keyup(function () {
-        let macbox = $('#MACBox');
-        macbox.empty();
-        let searchString = $.trim($(this).val().replace(/\-/g, ''));
-        if (searchString.length > 0) {
-            buildOptions(FilterItems(searchString, macList));
-        } else {
-            buildOptions(macList);
-        }
-    })
 
+    $('#SearchBox').on('input', searchFunction);
+    $('#PolicyList').trigger('change');
 })
 
 window.onload = function () {
