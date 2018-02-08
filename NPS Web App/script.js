@@ -17,11 +17,9 @@ $.fn.multiline = function (text) {
     return this;
 }
 
-class MACField {
-    constructor(text, value) {
-        this.text = text;
-        this.value = value;
-    }
+var MACField = function MACField(text, value) {
+    this.text = text;
+    this.value = value;
 }
 
 function ValidateAdd() {
@@ -83,8 +81,10 @@ function searchFunction() {
     let macbox = $('#MACBox');
     macbox.empty();
     let searchString = $.trim($(this).val().replace(/\-/g, ''));
-    let policies = []
-    for (let p of Object.keys(full_mac_list)) {
+    let policies = [];
+    let keys = Object.keys(full_mac_list);
+    for (let i in keys) {
+        let p = keys[i];
         let macs = FilterItems(searchString, full_mac_list[p]);
         if (searchString.length == 0 || macs.length > 0) {
             policies.push(p);
@@ -94,14 +94,20 @@ function searchFunction() {
     let policy = $('#PolicyList :selected').text()
     BuildPoliciesList(policies.sort(), policy);
     policy = $('#PolicyList :selected').text()
+    $('#PolicyList').removeClass('is-valid');
+    $('#PolicyList').removeClass('is-invalid');
     if (policies.length > 0) {
         if (searchString.length > 0) {
             buildOptions(FilterItems(searchString, full_mac_list[policy]));
+            if (policies.length > 1) {
+                $('#PolicyList').addClass('is-valid');
+            } 
         } else {
             buildOptions(full_mac_list[policy]);
         }
     } else {
         buildOptions([]);
+        $('#PolicyList').addClass('is-invalid');
     }
 }
 
@@ -111,9 +117,9 @@ function ChangePolicy() {
 
 function BuildPoliciesList(policyArray, policy) {
     let policies = new Array();
-    for (let key of policyArray) {
+    for (var i in policyArray) {
         policies.push("<option>");
-        policies.push(key);
+        policies.push(policyArray[i]);
         policies.push("</option>");
     }
     $('#PolicyList').html(policies.join(''));
@@ -128,9 +134,13 @@ $(document).ready(function () {
     $('#MACLimit').hide();
 
     full_mac_list = {};
-    for (let key of Object.keys(mac_data).sort()) {
+    let mac_keys = Object.keys(mac_data).sort();
+    for (let i in mac_keys) {
+        key = mac_keys[i];
         full_mac_list[key] = [];
-        for (let mac of mac_data[key].sort()) {
+        let sorted_mac_key = mac_data[key].sort();
+        for (let j in sorted_mac_key) {
+            let mac = sorted_mac_key[j];
             full_mac_list[key].push(new MACField(mac, mac.replace(/\-/g, '').toLowerCase()));
         }
     }
