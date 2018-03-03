@@ -255,7 +255,11 @@ Set-WebConfigurationProperty -filter /system.webServer/security/authentication/a
 Set-WebConfigurationProperty -filter /system.webServer/security/authentication/clientCertificateMappingAuthentication -name enabled -value true 
 Set-WebConfigurationProperty -Filter /system.webServer/security/access -name sslFlags -value "Ssl,SslNegotiateCert,SslRequireCert" -PSPath $site_path 
 Add-WebConfigurationProperty -filter /appSettings -name "." -value @{key='nps_servers';value=$nps_string} -pspath $site_path
-Add-WebConfigurationProperty -Filter /appSettings -name "." -value @{key=($env:UserDomain + "\" + $creds.UserName);value=".*"} -PSPath $site_path
+$permission_credential = $group
+if([regex]::Matches($permission_credential, "\\").Count -eq 0){
+    $permission_credential = $env:UserDomain + "\" + $permission_credential
+}
+Add-WebConfigurationProperty -Filter /appSettings -name "." -value @{key=($permission_credential);value=".*"} -PSPath $site_path
 
 Write-Host 'Finished Installation.'
 $site.Start()
