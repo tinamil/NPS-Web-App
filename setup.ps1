@@ -102,7 +102,7 @@ if(-not ($results)){
 }
 
 Do { $port = Read-host 'Server port (Valid range 0-65536) [default value 443]'}
-while ($port -ne "" -and ($port -notmatch "^[\d\.]+$" -or $port -lt 0 -or $port -gt 65536))
+while ($port -ne "" -and ($port -notmatch "^[\d\.]+$" -or [int]$port -lt 0 -or [int]$port -gt 65536))
 if($port -eq ""){
     $port = 443
 }
