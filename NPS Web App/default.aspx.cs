@@ -124,7 +124,6 @@ namespace NPS_Web_App
                 groups.Add(group.Translate(typeof(NTAccount)).ToString());
             }
             groups.Add(HttpContext.Current.Request.LogonUserIdentity.User.Translate(typeof(NTAccount)).ToString());
-            throw new Exception(groups.Last());
             return groups;
         }
 
