@@ -157,7 +157,7 @@ namespace NPS_Web_App
                 Regex r = new Regex("^" + groupPolicyRegexString + "$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
                 foreach (var policy in policies)
                 {
-                    if (r.IsMatch(policy))
+                    if (!newPolicies.Contains(policy) && r.IsMatch(policy))
                     {
                         newPolicies.Add(policy);
                     }
@@ -599,7 +599,7 @@ function Get-DictionaryPolicies {
         [xml]$x = Get-Content -Path $filePath -Raw
 
         $macHash = @{}
-        foreach($policy in $PolicyNames)
+        foreach($policy in $PolicyNames | sort -unique)
         {
             $MACList = Get-NPSPolicyMACNode $x $policy
 
